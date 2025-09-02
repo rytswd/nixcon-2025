@@ -1,0 +1,525 @@
+#+title: When Not to Nix: Working with External Config and SOPS Nix
+ #+author: Ryota @rytswd
+
+ You can find me on most platforms with ~@rytswd~.
+ 
+* Agenda
+
+1. Introduction
+   - About Ryota
+   - About this talk 
+
+2. Beauty of Nix
+   - Unify with Nix
+   - Declarative and functional configuration
+
+3. When Not to Nix
+   - When using expressive configuration
+   - When there is a community solution outside Nix
+   - When there is no Nix solution available
+   - Fast experimentation and iteration
+
+4. About SOPS
+   - Overview of ~SOPS~
+   
+5. SOPS Nix into Mix
+   - SOPS Mix Basic
+   - Using secret information from SOPS Nix
+   - Embedding secret into configuration file
+
+6. Summary
+
+     
+* 1. Introduction
+
+** About Ryota
+
+- Software engineer over a decade of experience, mainly in finance industry
+- Recent focus around Kubernetes and Cloud Native ecosystem
+- Has two kids and full-time parenting since Feb
+
+Open for next job opportunity 😉
+
+
+** About this talk
+
+- Overview of Nix way and non-Nix way mixed up
+- Examples of how non-Nix config helpful in some scenarios
+- Shed some light onto secret management with SOPS Nix which can be confusing
+
+
+And this talk is NOT about:
+
+- Exhaustive review of config management
+- Deep dive into SOPS Nix
+
+
+You can find the talk material at:
+
+https://github.com/rytswd/nixcon-2025
+
+
+* 2. Beauty of Nix
+
+Although this talk will focus on the use of non-Nix configuration, we should also highlight how Nix can make things easier to manage.
+
+** Unify with Nix
+
+Flameshot with ~.ini~ config ( https://github.com/flameshot-org/flameshot/blob/master/flameshot.example.ini )
+
+#+begin_example nix
+      services.flameshot = {
+        enable = true;
+        # Ref: https://github.com/flameshot-org/flameshot/blob/master/flameshot.example.ini
+        settings = {
+          General = {
+            disabledTrayIcon = true;
+            showStartupLaunchMessage = false;
+          };
+        };
+#+end_example
+
+Ref: https://github.com/rytswd/nix-config/blob/main/user-config/modules/screenshot/flameshot.nix
+
+
+GPG Agent config is in a similar config format, but I can simply use Nix syntax:
+
+#+begin_example nix
+    services.gpg-agent = {
+      enable = true;
+
+      # GPG agent keeps the cache of the key, and set TTL (time-to-live) of
+      # 600sec by default. Whenever the cache is accessed, the timer is reset.
+      #
+      # ... (snip)
+      defaultCacheTtl = (3600 * 24);
+      defaultCacheTtlSsh = (3600 * 24);
+      maxCacheTtl = (3600 * 24 * 7);
+      maxCacheTtlSsh = (3600 * 24 * 7);
+      
+      ...
+#+end_example
+
+Ref: https://github.com/rytswd/nix-config/blob/main/user-config/modules/security/gpg.nix
+
+
+** Declarative and functional configuration
+
+I have essentially the same code for ~fish~, ~zsh~, and ~bash~, but can take a conditional input of ~withEza~, so that in some environment, I can use the built-in ~ls~ rather than ~eza~ equivalent:
+
+Ref: https://github.com/rytswd/nix-config/blob/main/user-config/modules/shell/aliases-ls.nix
+
+#+begin_example nix
+    programs.fish = {
+      enable = true;
+      shellAliases = (import ./aliases-ls.nix { withEza = true; }) //
+        {
+          # Any aliases specific for fish can be defined here.
+        };
+      shellAbbrs = {
+        tm = "tmux new-session -A -D -s main";
+        ec = "emacsclient -n";
+        flake = "nix flake";
+      };
+
+      # Disable greeting by setting `fish_greeting` with empty value.
+      interactiveShellInit = ''
+        set fish_greeting
+      '';
+    };
+#+end_example
+
+Ref: https://github.com/rytswd/nix-config/blob/main/user-config/modules/shell/fish.nix
+
+
+* 3. When Not to Nix
+
+Nix is flexible and powerful, but also sometimes unnecessary.
+
+** When using expressive configuration
+
+Some configurations are heavily nested by nature, and could use YAML or TOML. In some cases, these may read better.
+Also, I find CSS string quite hard to parse within Nix code (such as Waybar).
+
+In those cases, it may be simple enough to use a separate file:
+
+#+begin_example nix
+    services.swaync = {
+      enable = true;
+    };
+    xdg.configFile = {
+      "swaync".source = ./config;
+      "swaync".recursive = true;
+    };
+#+end_example
+
+Ref: https://github.com/rytswd/nix-config/blob/main/user-config/modules/notification/swaync/default.nix#L20
+
+In this ~swaync~ example, rather than using CSS directly, I'm also managing the style with SCSS as there are a lot of duplicated selectors which can benefit from SCSS nesting and code reuse. While that's something you could use Nix for, I chose a simple SCSS instead.
+
+#+begin_example scss
+  $text: #000000;
+  $bg-100: rgba(#2C364A, 0.5);
+  $bg-200: rgba(#2C364A, 0.7);
+  $bg-500: rgba(#2C364A, 0.9);
+  $bg-variant-200: rgba(#ACB6CA, 0.2);
+  $bg-variant-500: rgba(#ACB6CA, 0.5);
+  $bg-variant-800: rgba(#ACB6CA, 0.8);
+  $critical: rgba(#92062e, 0.8);
+  ...
+  
+  ////----------------------------------------
+  ///   Popup
+  //------------------------------------------
+  .notification-row {
+    background: $bg-200;
+
+    &:hover, &:focus {
+      background: $bg-500;
+    }
+
+  ...
+#+end_example
+
+Ref: https://github.com/rytswd/nix-config/blob/main/user-config/modules/notification/swaync/config/style.scss#L1
+
+With this SCSS in place, it was easier for me to handle outside of Nix.
+
+
+** When there is a community solution outside Nix
+
+When you have an example configuration you can refer to, it's easier to use it as is. I have found ~swaylock~ configuration somewhere, and took it as the initial inspiration.
+
+Translating to Nix way is surely a possibility, but it would mean you may not be able to follow community update as easily. In this case, I simply didn't care enough to edit much, and stuck to the bare minimum config.
+
+#+begin_example nix
+    home.packages = [
+      pkgs.swaylock-effects
+    ];
+    xdg.configFile = {
+      "swaylock/config".source = ./swaylock/config;
+    };
+#+end_example
+
+Ref: https://github.com/rytswd/nix-config/blob/main/user-config/modules/session-lock/swaylock-effects.nix#L20
+
+And the config looks like this:
+
+#+begin_example 
+  # Do not trigger error when pressing enter without typing anything.
+  ignore-empty-password
+
+  # Take screenshot at the time of lock.
+  screenshots
+
+  # Show clock.
+  clock
+  timestr=%R
+  datestr=%a, %e %B
+  ...
+#+end_example
+
+Ref: https://github.com/rytswd/nix-config/blob/main/user-config/modules/session-lock/swaylock/config
+
+
+** When there is no Nix solution available
+
+Swappy ( https://github.com/jtheoof/swappy ) is a Wayland snapshot editing tool, and as of writing, I don't see home-manager support for it.
+
+As this was a simple use case, I went ahead to embed the actual config as multi-line string input. This may not be elegant and error prone if you need to update all so often, but this was simple enough to handle this way.
+
+#+begin_example nix
+    home.packages = [
+      pkgs.swappy
+    ];
+    xdg.configFile = {
+      "swappy/config".text = ''
+        [Default]
+        save_dir=$HOME/Pictures/Screenshots/
+        save_filename_format=ss-%Y%m%d-%H%M%S.png
+        show_panel=true
+        line_size=5
+        text_size=20
+        text_font=sans-serif
+        paint_mode=rectangle
+        early_exit=false
+        fill_shape=false
+      '';
+    };
+#+end_example
+
+Ref: https://github.com/rytswd/nix-config/blob/main/user-config/modules/screenshot/swappy.nix
+
+
+** Fast experimentation and iteration
+
+When you want to experiment and iterate quickly, having to rebuild the configuration could slow down the iteration cycle.
+
+This is an area that is worth exploring for more Nix integration with minimal mental overhead, but here are some tools I manage without Nix for their configuration.
+
+- Emacs
+- Neovim
+
+
+* 4. About SOPS
+
+Before going into SOPS Nix, let's have a look at SOPS.
+
+- SOPS (Secrets OPerationS)
+  https://getsops.io/
+  https://github.com/getsops/sops
+
+** Overview of SOPS
+
+SOPS encrypts secret information within a file with JSON, YAML, dotenv, binary.
+
+With the following example file:
+
+#+begin_example yaml
+  name: Ryota Sawada
+  email: ryota@example.com
+#+end_example
+
+We can simply run ~sops~ command for encryption. (Note that there is extra configuration needed, which we'll touch very shortly.)
+
+#+begin_example
+  sops encrypt work/secrets-raw.yaml --output work/secrets-encrypted-with-sops.yaml
+
+  # Or
+  # sops -e --output work/secrets-encrypted-with-sops.yaml work/secrets-raw.yaml
+
+  # And if you are to provide an encryption key from env variable
+  # SOPS_AGE_KEY_FILE=./age-key-for-demo-work.txt sops encrypt work/secrets-raw.yaml --output work/secrets-encrypted-with-sops.yaml
+#+end_example
+
+This results in a file like the following:
+
+#+begin_example yaml
+  name: ENC[AES256_GCM,data:Uq8p5gqvYN93unbu,iv:PGdGRUzZqMPtlO0CuRFqrdIk+rqbys98AJMdSj4A3Hg=,tag:/FfprObdMz5qiocbULhAtg==,type:str]
+  email: ENC[AES256_GCM,data:MWRGyCjMTPH5ETy6PzSS3xI=,iv:s5hEIzdRz604uG5rNuDLMDD37VKtcZdRyfHOEs9Sl0k=,tag:JWPs+0oPSi6/DhCkAd1mRA==,type:str]
+  sops:
+    age:
+      - recipient: age1k7mzl83lyrry8g43zp2g84phg9pphyh8488vxk6l32gccl8ygvlsuy6qfm
+        enc: |
+          -----BEGIN AGE ENCRYPTED FILE-----
+          YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBQdGtDNXV4aWh2TWRPU05h
+          SDYrMjJzZ2R2eUd3d3VobnR2emExUzZuQmhzCjc2Qkxmd0VZY21RMlhoSUl1SEtp
+          bFZFVFkzOWRrU2UrNGNpMnlNZ1VaMjAKLS0tIFRCb005bDV5dW8xZk0yeVRuMzFP
+          NFAxd0VtVHNEOXFKTnI5SkFLVjF3RlEKempTBoVaHwVSxU0LPLC73QFkJ0DoVo6X
+          UMkF/8qqz7giHMdpQwuTZB8KFqRkT0M1wCkuyNfx8V8C2XwWszGtwA==
+          -----END AGE ENCRYPTED FILE-----
+      - recipient: age10pteucjr6fzcshdddjax6m5pd9gn4ta2mmyvlplv75pdw7g4k5jqme4tk7
+        enc: |
+          -----BEGIN AGE ENCRYPTED FILE-----
+          YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSAvRkFab0FXUDRXcXdVa2Jx
+          ZEtBUXZLaUVldUVRWW5UUER3QmpHdzB0SDJjCllKSXZRWGFrUWd1ZUxKUU0yL0Zi
+          bWYwZENRbU9YaW55Ym1zTWJaMU5TUDAKLS0tIDNOSEV0bUMrekZrZnNQb2ZCU1Jn
+          ODc0Q3ZGRllkQUhXSFYxQmo4TWkyMFEKtDGCaPAixi6zB8OcYiEMaYbSD77IQMmV
+          pbFN7C0BTBr9utq2BvKj/bsdPDHWHeGB1bVHCabIfQdC/7ZWlIA3pQ==
+          -----END AGE ENCRYPTED FILE-----
+    lastmodified: "2025-09-05T11:59:24Z"
+    mac: ENC[AES256_GCM,data:gfPWgdO798pR1M8nCzR+GSS10LwMf4pSheUT8RF+CvqlJjLRLIfvRx05kCG8HuX0Jo+seOUzTKKs7x/I4xRDYueFnXSJRt19UAovKR4YzQS+H0lbDA0lLT3j9Swp0yvIkM661P92xXyVrUXC3nKV09FjQ35kwnn+Pu7TwXzL/KA=,iv:ZOHNaMt7JEeLe9fIjpbdPOKTSUrMhjIe9hc0dfVyvco=,tag:0Eb7r0bnfJ6vQZODPZxztQ==,type:str]
+    unencrypted_suffix: _unencrypted
+    version: 3.10.2
+#+end_example
+
+
+SOPS provides a friendly editing experience, where you can simply provide the file path to decrypt and edit, and upon saving the content, automatically encrypts it.
+
+#+begin_example
+  sops work/secrets-encrypted-with-sops.yaml
+
+  # And if you are to provide an encryption key from env variable
+  # SOPS_AGE_KEY_FILE=./age-key-for-demo-work.txt sops work/secrets-encrypted-with-sops.yaml
+#+end_example
+
+
+You can also use ~sops decrypt~ if you simply want to decrypt to stdout.
+
+
+We skipped one important piece of configuration, which is ~.sops.yaml~ file. SOPS allows encrypting using ~age~ or GPG keys, and each directory can have different keys configured.
+
+#+begin_example yaml
+  ---
+  keys:
+    - &personal age1dtfzvy79mvcwdff3rr2mu9v6mg04ygek79g66getpvxj7dlxyf5qkkyw6a
+    - &work age1k7mzl83lyrry8g43zp2g84phg9pphyh8488vxk6l32gccl8ygvlsuy6qfm
+    - &work_colleague age10pteucjr6fzcshdddjax6m5pd9gn4ta2mmyvlplv75pdw7g4k5jqme4tk7
+
+  creation_rules:
+    # For any work related secrets
+    - path_regex: work/.*
+      key_groups:
+        - age:
+           - *work
+           - *work_colleague
+
+    # For any personal secrets
+    - path_regex: personal/.*
+      key_groups:
+        - age:
+           - *personal
+
+    # Default encryption key can be also specified
+
+  stores:
+    yaml:
+      indent: 2
+#+end_example
+
+
+* 5. SOPS Nix into Mix
+
+Now, with the basic SOPS understanding, we can see how SOPS Nix works by default.
+
+- SOPS Nix
+  https://github.com/Mic92/sops-nix
+
+** SOPS Nix Basic
+
+SOPS Nix provides NixOS module as well as Home Manager module, each stores the secret data into ~/run/secrets/~ or ~$XDG_CONFIG_HOME/sops-nix/secrets/~ respectively. Using SOPS under the hood, SOPS Nix decrypts the SOPS file during activation.
+
+For the actual configuration using flake or not, please refer to the official repository above.
+
+The secrets are stored one secret per file, so with the following SOPS Nix configuration:
+
+#+begin_example nix
+  sops = {
+    defaultSopsFile = "./work/secrets-encrypted-with-sops.yaml";
+    defaultSopsFormat = "yaml";
+
+    age.keyFile = "./age-key-for-demo-work.txt";
+
+    secrets = {
+      # The below maps to the values in the example YAML file above (as
+      # specified in defaultSopsFile).
+
+      # Each entry here will create a separate file, such as:
+      #
+      #     ❯ cat $XDG_CONFIG_HOME/sops-nix/secrets/name
+      #     Ryota Sawada
+      #
+      "name" = {};
+
+      "email" = {};
+    };
+  };
+#+end_example
+
+SOPS Nix is pretty flexible with how files are stored.
+
+#+begin_example nix
+  sops = {
+    # ...
+
+    secrets = {
+      # You can also specify the target file name which does not match with 
+      "work/email" = {
+        sopsFile = "some/path/work/secrets-encrypted-with-sops.yaml";
+        key = "email";
+      };
+    };
+  };
+#+end_example
+
+** Using secret information from SOPS Nix
+
+By default, SOPS supports creating a dedicated file containing the secret information with the permission you specify.
+It means when you want to incorporate that secret information into the configuration, you'd have a few choices, such as:
+
+- Use it as is (when all you need is just a simple file input)
+- Use environmental variable to pull in the secret
+
+#+begin_example nix
+  programs.zsh = {
+    initExtra = ''
+      # ...
+      export SOME_API_KEY=$(cat ${config.sops.secrets."work/email".path})
+    '';
+  };
+#+end_example
+
+But this is a bit limiting, and how you'd need to fiddle with the environment is a less than ideal.
+
+** Embedding secret into configuration file
+
+SOPS Nix supports "template" file with a special string to be a placeholder in the file, which can then be replaced by SOPS Nix.
+
+Let's consider a separate configuration TOML file like below:
+
+#+begin_example toml
+  # The below placeholder is in the form of:
+  #
+  #     <SOPS:**SHA256_OF_SECRET**:PLACEHOLDER>
+  #
+  # And SHA256 can be generated using
+  #
+  #     nix repl
+  #     > builtins.hashString "sha256" "SECRET_NAME"
+  #
+  # With such input, SOPS Nix can replace with the decrypted secret.
+
+  [user]
+  # For my name, I can use the placeholder based on "name" secrets key off of
+  # SOPS Nix.
+  #
+  #     nix repl
+  #     > builtins.hashString "sha256" "name"
+  #     "82a3537ff0dbce7eec35d69edc3a189ee6f17d82f353a553f9aa96cb0be3ce89"
+  #
+  name = "<SOPS:82a3537ff0dbce7eec35d69edc3a189ee6f17d82f353a553f9aa96cb0be3ce89:PLACEHOLDER>"
+
+  # For my email, the same applies
+  #
+  #     nix repl
+  #     > builtins.hashString "sha256" "email"
+  #     "82244417f956ac7c599f191593f7e441a4fafa20a4158fd52e154f1dc4c8ed92"
+  #
+  email = "<SOPS:82244417f956ac7c599f191593f7e441a4fafa20a4158fd52e154f1dc4c8ed92:PLACEHOLDER>"
+  # Or if I chose "work/email" as the secret name:
+  #
+  #     nix repl
+  #     > builtins.hashString "sha256" "email"
+  #     "e4d33aff09e4fb7993a911487553c4e947b56689a52e96ebc6b8e5c4641daa27"
+  #
+  # email = "<SOPS:e4d33aff09e4fb7993a911487553c4e947b56689a52e96ebc6b8e5c4641daa27:PLACEHOLDER>"
+#+end_example
+
+With the above in place (let's say this is ~./config.toml~), I can get the following SOPS Nix setup to place the secret data embedded into the configuration, in my XDG Config home.
+
+#+begin_example nix
+  sops.templates."some-config-with-secret-embedded" = {
+    file = ./config.toml;
+    # Where to create the actual configuration file.
+    path = "${config.xdg.configHome}/some-config.toml";
+  };
+#+end_example
+
+The placeholder templates are useful to handle complex secret details, but we do need to note how this is moving the configuration out from Nix code, into some other format such as TOML, YAML etc. 
+
+
+* 6. Summary
+
+- Nix has various options for managing configuration
+
+- There is no single right answer, and which would make sense is context dependent
+
+- Sometimes external solutions like SOPS Nix may require the configuration to be kept in a separate file
+
+** Some other thoughts
+
+- I have all my Emacs and Neovim configurations saved as separate repos
+
+** Found anything inaccurate / incorrect?
+
+- I have done by own research to check what's available, but it is very possible I missed something.
+
+- I'd love to hear and learn from the experts here!
+  
+  
+* Thank you!
+
+https://github.com/rytswd/nixcon-2025
+
+#+ATTR_ORG: :width 1000
+[[file:./nacho.jpg]]
