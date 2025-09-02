@@ -1,0 +1,25 @@
+---
+keys:
+  - &personal age1dtfzvy79mvcwdff3rr2mu9v6mg04ygek79g66getpvxj7dlxyf5qkkyw6a
+  - &work age1k7mzl83lyrry8g43zp2g84phg9pphyh8488vxk6l32gccl8ygvlsuy6qfm
+  - &work_colleague age10pteucjr6fzcshdddjax6m5pd9gn4ta2mmyvlplv75pdw7g4k5jqme4tk7
+
+creation_rules:
+  # For any work related secrets
+  - path_regex: work/.*
+    key_groups:
+      - age:
+         - *work
+         - *work_colleague
+
+  # For any personal secrets
+  - path_regex: personal/.*
+    key_groups:
+      - age:
+         - *personal
+
+  # Default encryption key can be also specified
+
+stores:
+  yaml:
+    indent: 2
