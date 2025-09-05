@@ -58,6 +58,10 @@ You can find the talk material at:
 
 https://github.com/rytswd/nixcon-2025
 
+Also, a lot of code references come from
+
+https://github.com/rytswd/nix-config
+
 
 * 2. Beauty of Nix
 
@@ -260,6 +264,8 @@ This is an area that is worth exploring for more Nix integration with minimal me
 - Emacs
 - Neovim
 
+I update my Emacs config constantly, including community packages. While there are some Emacs packages that I do build Emacs with, my Emacs configuration lives in a separate repo (as of writing this is not shared publicly).
+
 
 * 4. About SOPS
 
@@ -337,7 +343,7 @@ SOPS provides a friendly editing experience, where you can simply provide the fi
 You can also use ~sops decrypt~ if you simply want to decrypt to stdout.
 
 
-We skipped one important piece of configuration, which is ~.sops.yaml~ file. SOPS allows encrypting using ~age~ or GPG keys, and each directory can have different keys configured.
+We skipped one important piece of configuration earlier, which is ~.sops.yaml~ file. SOPS allows encrypting using age or GPG keys, and each directory can have different keys configured.
 
 #+begin_example yaml
   ---
