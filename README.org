@@ -159,6 +159,7 @@ In those cases, it may be simple enough to use a separate file:
 
 Ref: https://github.com/rytswd/nix-config/blob/main/user-config/modules/notification/swaync/default.nix#L20
 
+
 In this ~swaync~ example, rather than using CSS directly, I'm also managing the style with SCSS as there are a lot of duplicated selectors which can benefit from SCSS nesting and code reuse. While that's something you could use Nix for, I chose a simple SCSS instead.
 
 #+begin_example scss
@@ -188,6 +189,8 @@ In this ~swaync~ example, rather than using CSS directly, I'm also managing the 
 Ref: https://github.com/rytswd/nix-config/blob/main/user-config/modules/notification/swaync/config/style.scss#L1
 
 With this SCSS in place, it was easier for me to handle outside of Nix.
+
+
 
 
 ** When there is a community solution outside Nix
@@ -226,6 +229,8 @@ And the config looks like this:
 Ref: https://github.com/rytswd/nix-config/blob/main/user-config/modules/session-lock/swaylock/config
 
 
+
+
 ** When there is no Nix solution available
 
 Swappy ( https://github.com/jtheoof/swappy ) is a Wayland snapshot editing tool, and as of writing, I don't see home-manager support for it.
@@ -253,6 +258,8 @@ As this was a simple use case, I went ahead to embed the actual config as multi-
 #+end_example
 
 Ref: https://github.com/rytswd/nix-config/blob/main/user-config/modules/screenshot/swappy.nix
+
+
 
 
 ** Fast experimentation and iteration
@@ -288,7 +295,7 @@ With the following example file:
 
 We can simply run ~sops~ command for encryption. (Note that there is extra configuration needed, which we'll touch very shortly.)
 
-#+begin_example
+#+begin_example bash
   sops encrypt work/secrets-raw.yaml --output work/secrets-encrypted-with-sops.yaml
 
   # Or
@@ -332,7 +339,7 @@ This results in a file like the following:
 
 SOPS provides a friendly editing experience, where you can simply provide the file path to decrypt and edit, and upon saving the content, automatically encrypts it.
 
-#+begin_example
+#+begin_example bash
   sops work/secrets-encrypted-with-sops.yaml
 
   # And if you are to provide an encryption key from env variable
@@ -508,13 +515,13 @@ The placeholder templates are useful to handle complex secret details, but we do
 
 - Nix has various options for managing configuration
 
-- There is no single right answer, and which would make sense is context dependent
+- There is no single right answer, and which would make sense is heavily context dependent
 
 - Sometimes external solutions like SOPS Nix may require the configuration to be kept in a separate file
 
 ** Some other thoughts
 
-- I have all my Emacs and Neovim configurations saved as separate repos
+- I have all my Emacs and Neovim configurations saved as separate repos, which I am considering to revisit
 
 ** Found anything inaccurate / incorrect?
 
